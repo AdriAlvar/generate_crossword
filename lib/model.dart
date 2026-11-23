@@ -1,8 +1,9 @@
+import 'dart:math';
+
 import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 import 'package:characters/characters.dart';
-import 'package:intl/intl.dart';
 
 part 'model.g.dart';
 
@@ -134,7 +135,9 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     });
   }
 
-  bool get valid {
+  bool get valid => _valid(requireConnected: true);
+
+  bool _valid({required bool requireConnected}) {
     if (width <= 0 || height <= 0) return false;
     final seenWords = <String>{};
     for (final entry in words) {
@@ -168,7 +171,7 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     }
 
     // Una sola red: desde la primera letra se puede llegar a todas las demás.
-    if (characters.isEmpty) return true;
+    if (!requireConnected || characters.isEmpty) return true;
     final first = characters.keys.first;
     final reached = <Location>{first};
     final pending = [first];
@@ -187,6 +190,7 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     required Location location,
     required String word,
     required Direction direction,
+    bool requireOverlap = true,
   }) {
     final letters = word.characters;
     if (letters.isEmpty || words.any((entry) => entry.word == word)) {
@@ -222,14 +226,14 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
         crosses = true;
       }
     }
-    if (words.isNotEmpty && !crosses) return null;
+    if (requireOverlap && words.isNotEmpty && !crosses) return null;
     final entry = CrosswordWord.word(
       word: word,
       location: location,
       direction: direction,
     );
     final next = rebuild((b) => b.words.add(entry));
-    return next.valid ? next : null;
+    return next._valid(requireConnected: requireOverlap) ? next : null;
   }
 
   @BuiltValueHook(finalizeBuilder: true)
@@ -353,45 +357,124 @@ abstract class WorkQueue implements Built<WorkQueue, WorkQueueBuilder> {
   }
 }
 
-abstract class DisplayInfo implements Built<DisplayInfo, DisplayInfoBuilder> {
-  String get wordsInGridCount;
-  String get candidateWordsCount;
-  String get locationsToExploreCount;
-  String get knownBadLocationsCount;
-  double get gridFilledPercentage;
+abstract class CrosswordPuzzleGame
+    implements Built<CrosswordPuzzleGame, CrosswordPuzzleGameBuilder> {
+  Crossword get crossword;
+  BuiltMap<Location, BuiltMap<Direction, BuiltList<String>>> get alternateWords;
+  BuiltList<CrosswordWord> get selectedWords;
+  static Serializer<CrosswordPuzzleGame> get serializer =>
+      _$crosswordPuzzleGameSerializer;
+  CrosswordPuzzleGame._();
+  factory CrosswordPuzzleGame([
+    void Function(CrosswordPuzzleGameBuilder)? updates,
+  ]) = _$CrosswordPuzzleGame;
 
-  static final _numbers = NumberFormat.decimalPattern('es_PY');
-  static Serializer<DisplayInfo> get serializer => _$displayInfoSerializer;
-  static final DisplayInfo empty = DisplayInfo(
-    (b) => b
-      ..wordsInGridCount = '0'
-      ..candidateWordsCount = '0'
-      ..locationsToExploreCount = '0'
-      ..knownBadLocationsCount = '0'
-      ..gridFilledPercentage = 0,
-  );
+  factory CrosswordPuzzleGame.from({
+    required Crossword crossword,
+    required BuiltSet<String> candidateWords,
+  }) {
+    final used = crossword.words.map((entry) => entry.word).toSet();
+    final byLength = <int, List<String>>{};
+    for (final word in candidateWords) {
+      if (!used.contains(word)) (byLength[word.length] ??= []).add(word);
+    }
+    final random = Random();
+    final slots = <Location, Map<Direction, BuiltList<String>>>{};
+    for (final entry in crossword.words) {
+      final pool = byLength[entry.word.length] ?? <String>[];
+      final alternatives = <String>[];
+      // Muestreo sin reemplazo dentro de cada menú.
+      for (var i = 0; i < min(4, pool.length); i++) {
+        final j = i + random.nextInt(pool.length - i);
+        final picked = pool[j];
+        pool[j] = pool[i];
+        pool[i] = picked;
+        alternatives.add(picked);
+      }
+      alternatives.sort();
+      (slots[entry.location] ??= {})[entry.direction] = BuiltList<String>(
+        alternatives,
+      );
+    }
+    return CrosswordPuzzleGame((b) {
+      b.crossword.replace(crossword);
+      for (final item in slots.entries) {
+        b.alternateWords[item.key] = BuiltMap<Direction, BuiltList<String>>(
+          item.value,
+        );
+      }
+    });
+  }
 
-  DisplayInfo._();
-  factory DisplayInfo([void Function(DisplayInfoBuilder)? updates]) =
-      _$DisplayInfo;
+  @memoized
+  Crossword get crosswordFromSelectedWords => Crossword((b) {
+    b.width = crossword.width;
+    b.height = crossword.height;
+    b.words.replace(selectedWords);
+  });
 
-  factory DisplayInfo.from({required WorkQueue workQueue}) {
-    final board = workQueue.crossword;
-    final area = board.width * board.height;
-    return DisplayInfo(
-      (b) => b
-        ..wordsInGridCount = _numbers.format(board.words.length)
-        ..candidateWordsCount = _numbers.format(workQueue.candidateWords.length)
-        ..locationsToExploreCount = _numbers.format(
-          workQueue.locationsToTry.length,
+  bool get solved =>
+      crossword.words.isNotEmpty &&
+      selectedWords.length == crossword.words.length &&
+      crosswordFromSelectedWords.valid;
+
+  bool canSelectWord({
+    required Location location,
+    required Direction direction,
+    required String word,
+  }) {
+    final cell = crossword.characters[location];
+    final slot = direction == Direction.across
+        ? cell?.acrossWord
+        : cell?.downWord;
+    if (slot == null || slot.location != location) return false;
+    if (word != slot.word &&
+        !(alternateWords[location]?[direction]?.contains(word) ?? false)) {
+      return false;
+    }
+    final board = crosswordFromSelectedWords;
+    for (final entry in selectedWords) {
+      if (entry.word == word &&
+          (entry.location != location || entry.direction != direction)) {
+        return false;
+      }
+    }
+    for (final (i, letter) in word.characters.indexed) {
+      final other = board.characters[direction.offsetFrom(location, i)];
+      if (other == null) continue;
+      final crossing = direction == Direction.across
+          ? other.downWord
+          : other.acrossWord;
+      if (crossing != null && other.character != letter) return false;
+    }
+    return true;
+  }
+
+  CrosswordPuzzleGame? selectWord({
+    required Location location,
+    required Direction direction,
+    required String word,
+  }) {
+    if (!canSelectWord(location: location, direction: direction, word: word)) {
+      return null;
+    }
+    final previous = selectedWords
+        .where(
+          (entry) => entry.location == location && entry.direction == direction,
         )
-        ..knownBadLocationsCount = _numbers.format(
-          workQueue.badLocations.length,
-        )
-        ..gridFilledPercentage = area == 0
-            ? 0
-            : 100 * board.characters.length / area,
-    );
+        .firstOrNull;
+    return rebuild((b) {
+      if (previous != null) b.selectedWords.remove(previous);
+      if (previous?.word != word) {
+        b.selectedWords.add(
+          CrosswordWord.word(
+            location: location,
+            direction: direction,
+            word: word,
+          ),
+        );
+      }
+    });
   }
 }
 
@@ -423,7 +506,20 @@ class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   CrosswordCharacter,
   Crossword,
   WorkQueue,
-  DisplayInfo,
+  CrosswordPuzzleGame,
 ])
 final Serializers serializers =
-    (_$serializers.toBuilder()..add(_DirectionSerializer())).build();
+    (_$serializers.toBuilder()
+          ..add(_DirectionSerializer())
+          ..addBuilderFactory(
+            const FullType(BuiltList, [FullType(String)]),
+            () => ListBuilder<String>(),
+          )
+          ..addBuilderFactory(
+            const FullType(BuiltMap, [
+              FullType(Direction),
+              FullType(BuiltList, [FullType(String)]),
+            ]),
+            () => MapBuilder<Direction, BuiltList<String>>(),
+          ))
+        .build();

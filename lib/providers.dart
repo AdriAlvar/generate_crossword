@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:built_collection/built_collection.dart';
 import 'package:flutter/services.dart';
-import 'package:riverpod/riverpod.dart' show ProviderListenableSelect;
+import 'package:flutter/foundation.dart' show compute;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'model.dart' as model;
@@ -45,112 +45,74 @@ class Size extends _$Size {
   void setSize(CrosswordSize size) => state = size;
 }
 
-enum BackgroundWorkers {
-  one(1),
-  two(2),
-  four(4),
-  eight(8),
-  sixteen(16),
-  thirtyTwo(32),
-  sixtyFour(64),
-  oneTwentyEight(128);
-
-  const BackgroundWorkers(this.count);
-  final int count;
-}
-
-@Riverpod(keepAlive: true)
-class WorkerCount extends _$WorkerCount {
-  @override
-  BackgroundWorkers build() => BackgroundWorkers.four;
-
-  void setWorkers(BackgroundWorkers workers) => state = workers;
-}
+const backgroundWorkerCount = 4;
 
 @riverpod
 Stream<model.WorkQueue> workQueue(Ref ref) async* {
   final size = ref.watch(sizeProvider);
-  final workers = ref.watch(workerCountProvider);
   final dictionary = await ref.watch(wordListProvider.future);
   if (!ref.mounted) return;
-
-  ref.read(startTimeProvider.notifier).start();
-  ref.read(endTimeProvider.notifier).reset();
   yield* exploreCrosswordSolutions(
     crossword: model.Crossword.crossword(
       width: size.width,
       height: size.height,
     ),
     wordList: dictionary,
-    maxWorkerCount: workers.count,
+    maxWorkerCount: backgroundWorkerCount,
     isActive: () => ref.mounted,
   );
-  if (ref.mounted) ref.read(endTimeProvider.notifier).finish();
 }
 
-@Riverpod(keepAlive: true)
-class StartTime extends _$StartTime {
-  @override
-  DateTime? build() {
-    ref.watch(sizeProvider);
-    ref.watch(workerCountProvider);
-    return null;
-  }
+model.CrosswordPuzzleGame _puzzleFromCrosswordTrampoline(
+  (model.Crossword, BuiltSet<String>) args,
+) =>
+    model.CrosswordPuzzleGame.from(crossword: args.$1, candidateWords: args.$2);
 
-  void start() => state = DateTime.now();
-}
+typedef _Move = ({
+  model.CrosswordPuzzleGame game,
+  model.Location location,
+  model.Direction direction,
+  String word,
+});
 
-@Riverpod(keepAlive: true)
-class EndTime extends _$EndTime {
-  @override
-  DateTime? build() {
-    ref.watch(sizeProvider);
-    ref.watch(workerCountProvider);
-    return null;
-  }
-
-  void reset() => state = null;
-  void finish() => state = DateTime.now();
-}
-
-@Riverpod(keepAlive: true)
-class ShowDisplayInfo extends _$ShowDisplayInfo {
-  @override
-  bool build() => true;
-  void toggle() => state = !state;
-}
+model.CrosswordPuzzleGame? _puzzleSelectWordTrampoline(_Move move) =>
+    move.game.selectWord(
+      location: move.location,
+      direction: move.direction,
+      word: move.word,
+    );
 
 @riverpod
-class DisplayInfo extends _$DisplayInfo {
+class Puzzle extends _$Puzzle {
   @override
-  model.DisplayInfo build() => ref.watch(
-    workQueueProvider.select((result) {
-      final queue = result.asData?.value;
-      return queue == null
-          ? model.DisplayInfo.empty
-          : model.DisplayInfo.from(workQueue: queue);
-    }),
-  );
-}
-
-const _estimatedTotalCoverage = 0.54;
-
-@riverpod
-Duration expectedRemainingTime(Ref ref) {
-  final start = ref.watch(startTimeProvider);
-  final end = ref.watch(endTimeProvider);
-  final progress = ref.watch(
-    displayInfoProvider.select((info) => info.gridFilledPercentage / 100),
-  );
-  if (start == null ||
-      end != null ||
-      progress <= 0 ||
-      progress >= _estimatedTotalCoverage) {
-    return Duration.zero;
+  Future<model.CrosswordPuzzleGame?> build() async {
+    final queue = ref.watch(workQueueProvider).asData?.value;
+    if (queue == null || !queue.isCompleted) return null;
+    return compute(_puzzleFromCrosswordTrampoline, (
+      queue.crossword,
+      queue.candidateWords,
+    ));
   }
-  final elapsed = DateTime.now().difference(start);
-  if (elapsed.isNegative) return Duration.zero;
-  final remaining =
-      elapsed.inMicroseconds * (_estimatedTotalCoverage / progress - 1);
-  return Duration(microseconds: remaining.round());
+
+  Future<void> selectWord(
+    model.Location location,
+    model.Direction direction,
+    String word,
+  ) async {
+    final session = ref;
+    while (session.mounted) {
+      final game = state.asData?.value;
+      if (game == null || game.solved) return;
+      final next = await compute(_puzzleSelectWordTrampoline, (
+        game: game,
+        location: location,
+        direction: direction,
+        word: word,
+      ));
+      if (!session.mounted) return;
+      if (!identical(game, state.asData?.value)) continue;
+      if (next != null) state = AsyncData(next);
+      return;
+    }
+  }
 }

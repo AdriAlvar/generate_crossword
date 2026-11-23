@@ -2,6 +2,7 @@ import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 import 'package:characters/characters.dart';
+import 'package:intl/intl.dart';
 
 part 'model.g.dart';
 
@@ -352,6 +353,48 @@ abstract class WorkQueue implements Built<WorkQueue, WorkQueueBuilder> {
   }
 }
 
+abstract class DisplayInfo implements Built<DisplayInfo, DisplayInfoBuilder> {
+  String get wordsInGridCount;
+  String get candidateWordsCount;
+  String get locationsToExploreCount;
+  String get knownBadLocationsCount;
+  double get gridFilledPercentage;
+
+  static final _numbers = NumberFormat.decimalPattern('es_PY');
+  static Serializer<DisplayInfo> get serializer => _$displayInfoSerializer;
+  static final DisplayInfo empty = DisplayInfo(
+    (b) => b
+      ..wordsInGridCount = '0'
+      ..candidateWordsCount = '0'
+      ..locationsToExploreCount = '0'
+      ..knownBadLocationsCount = '0'
+      ..gridFilledPercentage = 0,
+  );
+
+  DisplayInfo._();
+  factory DisplayInfo([void Function(DisplayInfoBuilder)? updates]) =
+      _$DisplayInfo;
+
+  factory DisplayInfo.from({required WorkQueue workQueue}) {
+    final board = workQueue.crossword;
+    final area = board.width * board.height;
+    return DisplayInfo(
+      (b) => b
+        ..wordsInGridCount = _numbers.format(board.words.length)
+        ..candidateWordsCount = _numbers.format(workQueue.candidateWords.length)
+        ..locationsToExploreCount = _numbers.format(
+          workQueue.locationsToTry.length,
+        )
+        ..knownBadLocationsCount = _numbers.format(
+          workQueue.badLocations.length,
+        )
+        ..gridFilledPercentage = area == 0
+            ? 0
+            : 100 * board.characters.length / area,
+    );
+  }
+}
+
 class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   @override
   Iterable<Type> get types => const [Direction];
@@ -380,6 +423,7 @@ class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   CrosswordCharacter,
   Crossword,
   WorkQueue,
+  DisplayInfo,
 ])
 final Serializers serializers =
     (_$serializers.toBuilder()..add(_DirectionSerializer())).build();

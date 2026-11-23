@@ -46,13 +46,12 @@ Crossword? _tryAtAnchor(_Search search) {
   return null;
 }
 
-Stream<Crossword> exploreCrosswordSolutions({
+Stream<WorkQueue> exploreCrosswordSolutions({
   required Crossword crossword,
   required BuiltSet<String> wordList,
   bool Function()? isActive,
 }) async* {
   final elapsed = Stopwatch()..start();
-  yield crossword;
   if (!(isActive?.call() ?? true)) return;
 
   var queue = WorkQueue.from(
@@ -60,6 +59,7 @@ Stream<Crossword> exploreCrosswordSolutions({
     candidateWords: wordList,
     startLocation: Location.at(0, 0),
   );
+  yield queue;
   final random = Random();
   // Un orden aleatorio por tablero. Cada búsqueda empieza en un índice distinto.
   final pool = queue.candidateWords.toList(growable: false)..shuffle(random);
@@ -88,8 +88,8 @@ Stream<Crossword> exploreCrosswordSolutions({
       queue = queue.remove(anchor);
     } else {
       queue = queue.updateFrom(next);
-      yield next;
     }
+    yield queue;
   }
   elapsed.stop();
   debugPrint(

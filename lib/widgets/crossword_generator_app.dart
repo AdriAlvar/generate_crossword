@@ -2,19 +2,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../providers.dart' as providers;
+import 'crossword_info_widget.dart';
 import 'crossword_widget.dart';
 
-class CrosswordGeneratorApp extends StatelessWidget {
+class CrosswordGeneratorApp extends ConsumerWidget {
   const CrosswordGeneratorApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showInfo = ref.watch(providers.showDisplayInfoProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Crossword Generator'),
         actions: const [_CrosswordGeneratorMenu()],
       ),
-      body: const CrosswordWidget(),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const CrosswordWidget(),
+          if (showInfo) const CrosswordInfoWidget(),
+        ],
+      ),
     );
   }
 }
@@ -25,8 +33,15 @@ class _CrosswordGeneratorMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(providers.sizeProvider);
+    final showInfo = ref.watch(providers.showDisplayInfoProvider);
     return MenuAnchor(
       menuChildren: [
+        CheckboxMenuButton(
+          value: showInfo,
+          onChanged: (_) =>
+              ref.read(providers.showDisplayInfoProvider.notifier).toggle(),
+          child: const Text('Mostrar estadísticas'),
+        ),
         for (final size in providers.CrosswordSize.values)
           MenuItemButton(
             onPressed: () =>

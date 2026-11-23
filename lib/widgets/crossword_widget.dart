@@ -12,7 +12,7 @@ class CrosswordWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final size = ref.watch(providers.sizeProvider);
     final status = ref.watch(
-      providers.crosswordProvider.select(
+      providers.workQueueProvider.select(
         (state) => (ready: state.hasValue, error: state.error),
       ),
     );
@@ -46,9 +46,13 @@ class CrosswordWidget extends ConsumerWidget {
             child: Consumer(
               builder: (context, ref, _) {
                 final letter = ref.watch(
-                  providers.crosswordProvider.select(
-                    (state) =>
-                        state.asData?.value.characters[location]?.character,
+                  providers.workQueueProvider.select(
+                    (state) => state
+                        .asData
+                        ?.value
+                        .crossword
+                        .characters[location]
+                        ?.character,
                   ),
                 );
                 return Center(child: Text(letter ?? ''));

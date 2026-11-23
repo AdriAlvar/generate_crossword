@@ -263,6 +263,95 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
   }
 }
 
+abstract class WorkQueue implements Built<WorkQueue, WorkQueueBuilder> {
+  Crossword get crossword;
+  BuiltMap<Location, Direction> get locationsToTry;
+  BuiltSet<Location> get badLocations;
+  BuiltSet<String> get candidateWords;
+  bool get isCompleted => locationsToTry.isEmpty || candidateWords.isEmpty;
+
+  static Serializer<WorkQueue> get serializer => _$workQueueSerializer;
+
+  WorkQueue._();
+
+  factory WorkQueue([void Function(WorkQueueBuilder)? updates]) = _$WorkQueue;
+
+  static WorkQueue from({
+    required Crossword crossword,
+    required Iterable<String> candidateWords,
+    required Location startLocation,
+  }) {
+    final longest = crossword.width > crossword.height
+        ? crossword.width
+        : crossword.height;
+    return WorkQueue((b) {
+      b.crossword.replace(crossword);
+      b.candidateWords.addAll(
+        candidateWords.where(
+          (word) => word.isNotEmpty && word.length <= longest,
+        ),
+      );
+      for (final entry in crossword.words) {
+        b.candidateWords.remove(entry.word);
+      }
+      if (crossword.words.isEmpty) {
+        if (_inside(crossword, startLocation)) {
+          b.locationsToTry[startLocation] = Direction.across;
+        }
+      } else {
+        b.locationsToTry.addAll(_openLocations(crossword));
+      }
+    });
+  }
+
+  WorkQueue remove(Location location) => rebuild((b) {
+    b.locationsToTry.remove(location);
+    b.badLocations.add(location);
+  });
+
+  WorkQueue updateFrom(Crossword next) => rebuild((b) {
+    b.crossword.replace(next);
+    for (final entry in next.words) {
+      if (candidateWords.contains(entry.word)) {
+        b.candidateWords.remove(entry.word);
+      }
+    }
+    b.locationsToTry.clear();
+    for (final entry in _openLocations(next).entries) {
+      if (!badLocations.contains(entry.key)) {
+        b.locationsToTry[entry.key] = entry.value;
+      }
+    }
+  });
+
+  static bool _inside(Crossword board, Location p) =>
+      p.x >= 0 && p.x < board.width && p.y >= 0 && p.y < board.height;
+
+  static Map<Location, Direction> _openLocations(Crossword board) {
+    final result = <Location, Direction>{};
+    for (final entry in board.characters.entries) {
+      final cell = entry.value;
+      final direction = switch ((cell.acrossWord, cell.downWord)) {
+        (null, CrosswordWord()) => Direction.across,
+        (CrosswordWord(), null) => Direction.down,
+        _ => null,
+      };
+      if (direction == null) continue;
+      for (final delta in const [-1, 1]) {
+        final step = direction.offsetFrom(entry.key, delta);
+        if (!_inside(board, step)) continue;
+        final across = direction == Direction.across;
+        if (!board.characters.containsKey(across ? step.up : step.left) &&
+            !board.characters.containsKey(across ? step.down : step.right)) {
+          result[entry.key] = direction;
+          break;
+        }
+      }
+    }
+    return result;
+  }
+}
+
 class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   @override
   Iterable<Type> get types => const [Direction];
@@ -285,6 +374,12 @@ class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   }) => Direction.values.byName(serialized as String);
 }
 
-@SerializersFor([Location, CrosswordWord, CrosswordCharacter, Crossword])
+@SerializersFor([
+  Location,
+  CrosswordWord,
+  CrosswordCharacter,
+  Crossword,
+  WorkQueue,
+])
 final Serializers serializers =
     (_$serializers.toBuilder()..add(_DirectionSerializer())).build();

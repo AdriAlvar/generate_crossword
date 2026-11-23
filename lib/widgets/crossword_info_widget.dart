@@ -22,6 +22,7 @@ class CrosswordInfoWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final info = ref.watch(providers.displayInfoProvider);
     final size = ref.watch(providers.sizeProvider);
+    final workers = ref.watch(providers.workerCountProvider);
     final start = ref.watch(providers.startTimeProvider);
     final end = ref.watch(providers.endTimeProvider);
     final remaining = ref.watch(providers.expectedRemainingTimeProvider);
@@ -38,6 +39,7 @@ class CrosswordInfoWidget extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Cuadrícula: ${size.label}'),
+                Text('Máximo de trabajadores: ${workers.count}'),
                 Text('Palabras colocadas: ${info.wordsInGridCount}'),
                 Text('Palabras candidatas: ${info.candidateWordsCount}'),
                 Text('Cruces por explorar: ${info.locationsToExploreCount}'),

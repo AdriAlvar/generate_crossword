@@ -45,9 +45,32 @@ class Size extends _$Size {
   void setSize(CrosswordSize size) => state = size;
 }
 
+enum BackgroundWorkers {
+  one(1),
+  two(2),
+  four(4),
+  eight(8),
+  sixteen(16),
+  thirtyTwo(32),
+  sixtyFour(64),
+  oneTwentyEight(128);
+
+  const BackgroundWorkers(this.count);
+  final int count;
+}
+
+@Riverpod(keepAlive: true)
+class WorkerCount extends _$WorkerCount {
+  @override
+  BackgroundWorkers build() => BackgroundWorkers.four;
+
+  void setWorkers(BackgroundWorkers workers) => state = workers;
+}
+
 @riverpod
 Stream<model.WorkQueue> workQueue(Ref ref) async* {
   final size = ref.watch(sizeProvider);
+  final workers = ref.watch(workerCountProvider);
   final dictionary = await ref.watch(wordListProvider.future);
   if (!ref.mounted) return;
 
@@ -59,6 +82,7 @@ Stream<model.WorkQueue> workQueue(Ref ref) async* {
       height: size.height,
     ),
     wordList: dictionary,
+    maxWorkerCount: workers.count,
     isActive: () => ref.mounted,
   );
   if (ref.mounted) ref.read(endTimeProvider.notifier).finish();
@@ -69,6 +93,7 @@ class StartTime extends _$StartTime {
   @override
   DateTime? build() {
     ref.watch(sizeProvider);
+    ref.watch(workerCountProvider);
     return null;
   }
 
@@ -80,6 +105,7 @@ class EndTime extends _$EndTime {
   @override
   DateTime? build() {
     ref.watch(sizeProvider);
+    ref.watch(workerCountProvider);
     return null;
   }
 

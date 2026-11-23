@@ -24,12 +24,11 @@ class CrosswordWidget extends ConsumerWidget {
     }
 
     const span = TableSpan(extent: FixedTableSpanExtent(32));
-    final outline = Theme.of(context).colorScheme.outlineVariant;
-    final cellStyle = BoxDecoration(
-      border: Border(
-        right: BorderSide(color: outline),
-        bottom: BorderSide(color: outline),
-      ),
+    final colors = Theme.of(context).colorScheme;
+    final textStyle = DefaultTextStyle.of(context).style;
+    final border = Border(
+      right: BorderSide(color: colors.outlineVariant),
+      bottom: BorderSide(color: colors.outlineVariant),
     );
     return TableView.builder(
       key: ValueKey(size),
@@ -41,23 +40,35 @@ class CrosswordWidget extends ConsumerWidget {
       cellBuilder: (context, vicinity) {
         final location = Location.at(vicinity.column, vicinity.row);
         return TableViewCell(
-          child: DecoratedBox(
-            decoration: cellStyle,
-            child: Consumer(
-              builder: (context, ref, _) {
-                final letter = ref.watch(
-                  providers.workQueueProvider.select(
-                    (state) => state
-                        .asData
-                        ?.value
-                        .crossword
-                        .characters[location]
-                        ?.character,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final cell = ref.watch(
+                providers.workQueueProvider.select((state) {
+                  final queue = state.asData?.value;
+                  return (
+                    letter: queue?.crossword.characters[location]?.character,
+                    open: queue?.locationsToTry.containsKey(location) ?? false,
+                  );
+                }),
+              );
+              return AnimatedContainer(
+                alignment: Alignment.center,
+                duration: Durations.extralong1,
+                curve: Curves.easeInOut,
+                decoration: BoxDecoration(
+                  color: cell.open ? colors.primary : colors.onPrimary,
+                  border: border,
+                ),
+                child: AnimatedDefaultTextStyle(
+                  duration: Durations.extralong1,
+                  curve: Curves.easeInOut,
+                  style: textStyle.copyWith(
+                    color: cell.open ? colors.onPrimary : colors.primary,
                   ),
-                );
-                return Center(child: Text(letter ?? ''));
-              },
-            ),
+                  child: Text(cell.letter ?? ''),
+                ),
+              );
+            },
           ),
         );
       },

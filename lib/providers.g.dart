@@ -99,6 +99,58 @@ abstract class _$Size extends $Notifier<CrosswordSize> {
   }
 }
 
+@ProviderFor(WorkerCount)
+final workerCountProvider = WorkerCountProvider._();
+
+final class WorkerCountProvider
+    extends $NotifierProvider<WorkerCount, BackgroundWorkers> {
+  WorkerCountProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'workerCountProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$workerCountHash();
+
+  @$internal
+  @override
+  WorkerCount create() => WorkerCount();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(BackgroundWorkers value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<BackgroundWorkers>(value),
+    );
+  }
+}
+
+String _$workerCountHash() => r'6a9b99efd3cd815f1e11490eec978e77650b7cd6';
+
+abstract class _$WorkerCount extends $Notifier<BackgroundWorkers> {
+  BackgroundWorkers build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<BackgroundWorkers, BackgroundWorkers>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<BackgroundWorkers, BackgroundWorkers>,
+              BackgroundWorkers,
+              Object?,
+              Object?
+            >;
+    return element.handleCreate(ref, build);
+  }
+}
+
 @ProviderFor(workQueue)
 final workQueueProvider = WorkQueueProvider._();
 
@@ -136,7 +188,7 @@ final class WorkQueueProvider
   }
 }
 
-String _$workQueueHash() => r'c14574f80ef9ab0282914d9469e9b7d300d22a5d';
+String _$workQueueHash() => r'e3444e506c6065a494f00a2cd485c3ed6044203e';
 
 @ProviderFor(StartTime)
 final startTimeProvider = StartTimeProvider._();
@@ -169,7 +221,7 @@ final class StartTimeProvider extends $NotifierProvider<StartTime, DateTime?> {
   }
 }
 
-String _$startTimeHash() => r'97a0d7ffda9ae25c96e5c1dfcbf046d2cd528057';
+String _$startTimeHash() => r'6a3cadcd8adc3f684b40bf1c5e3ac543b2d9108a';
 
 abstract class _$StartTime extends $Notifier<DateTime?> {
   DateTime? build();
@@ -220,7 +272,7 @@ final class EndTimeProvider extends $NotifierProvider<EndTime, DateTime?> {
   }
 }
 
-String _$endTimeHash() => r'30b6afabcc2c50269d1572142a44c4e0efdb4a1e';
+String _$endTimeHash() => r'a90aae9ed01f54f9824616eba0c42c8e7cb1e8c3';
 
 abstract class _$EndTime extends $Notifier<DateTime?> {
   DateTime? build();

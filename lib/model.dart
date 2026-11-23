@@ -39,6 +39,10 @@ enum Direction {
   across,
   down;
 
+  Location offsetFrom(Location start, int offset) => this == Direction.across
+      ? start.rightOffset(offset)
+      : start.downOffset(offset);
+
   @override
   String toString() => name;
 }
@@ -90,8 +94,9 @@ abstract class CrosswordCharacter
 
   CrosswordCharacter._();
 
-  factory CrosswordCharacter([void Function(CrosswordCharacterBuilder)? updates]) =
-      _$CrosswordCharacter;
+  factory CrosswordCharacter([
+    void Function(CrosswordCharacterBuilder)? updates,
+  ]) = _$CrosswordCharacter;
 
   factory CrosswordCharacter.character({
     required String character,
@@ -128,24 +133,102 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     });
   }
 
-  Crossword addWord({
+  bool get valid {
+    if (width <= 0 || height <= 0) return false;
+    final seenWords = <String>{};
+    for (final entry in words) {
+      if (entry.word.isEmpty || !seenWords.add(entry.word)) return false;
+      for (final (offset, letter) in entry.word.characters.indexed) {
+        final location = entry.direction.offsetFrom(entry.location, offset);
+        final cell = characters[location];
+        if (cell == null || cell.character != letter) return false;
+        final owner = entry.direction == Direction.across
+            ? cell.acrossWord
+            : cell.downWord;
+        if (owner != entry) return false;
+      }
+    }
+
+    for (final item in characters.entries) {
+      final p = item.key;
+      final cell = item.value;
+      if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) return false;
+      if (cell.acrossWord == null && cell.downWord == null) return false;
+      final right = characters[p.right];
+      if (right != null &&
+          (cell.acrossWord == null || cell.acrossWord != right.acrossWord)) {
+        return false;
+      }
+      final below = characters[p.down];
+      if (below != null &&
+          (cell.downWord == null || cell.downWord != below.downWord)) {
+        return false;
+      }
+    }
+
+    // Una sola red: desde la primera letra se puede llegar a todas las demás.
+    if (characters.isEmpty) return true;
+    final first = characters.keys.first;
+    final reached = <Location>{first};
+    final pending = [first];
+    while (pending.isNotEmpty) {
+      final p = pending.removeLast();
+      for (final neighbor in [p.left, p.right, p.up, p.down]) {
+        if (characters.containsKey(neighbor) && reached.add(neighbor)) {
+          pending.add(neighbor);
+        }
+      }
+    }
+    return reached.length == characters.length;
+  }
+
+  Crossword? addWord({
     required Location location,
     required String word,
     required Direction direction,
   }) {
-    final length = word.characters.length;
-    final endX = location.x + (direction == Direction.across ? length : 1);
-    final endY = location.y + (direction == Direction.down ? length : 1);
-    if (length == 0 || location.x < 0 || location.y < 0 ||
-        endX > width || endY > height) {
-      throw ArgumentError('La palabra debe caber dentro del tablero.');
+    final letters = word.characters;
+    if (letters.isEmpty || words.any((entry) => entry.word == word)) {
+      return null;
     }
+    final last = direction.offsetFrom(location, letters.length - 1);
+    if (location.x < 0 ||
+        location.y < 0 ||
+        last.x >= width ||
+        last.y >= height) {
+      return null;
+    }
+    if (characters.containsKey(direction.offsetFrom(location, -1)) ||
+        characters.containsKey(direction.offsetFrom(last, 1))) {
+      return null;
+    }
+
+    final across = direction == Direction.across;
+    var crosses = false;
+    for (final (offset, letter) in letters.indexed) {
+      final p = direction.offsetFrom(location, offset);
+      final cell = characters[p];
+      if (cell == null) {
+        if (characters.containsKey(across ? p.up : p.left) ||
+            characters.containsKey(across ? p.down : p.right)) {
+          return null;
+        }
+      } else {
+        if (cell.character != letter ||
+            (across ? cell.acrossWord : cell.downWord) != null) {
+          return null;
+        }
+        crosses = true;
+      }
+    }
+    if (words.isNotEmpty && !crosses) return null;
     final entry = CrosswordWord.word(
       word: word,
       location: location,
       direction: direction,
     );
-    return rebuild((b) => b.words.add(entry));
+    final next = rebuild((b) => b.words.add(entry));
+    return next.valid ? next : null;
   }
 
   @BuiltValueHook(finalizeBuilder: true)
@@ -188,14 +271,18 @@ class _DirectionSerializer implements PrimitiveSerializer<Direction> {
   String get wireName => 'Direction';
 
   @override
-  Object serialize(Serializers serializers, Direction value,
-          {FullType specifiedType = FullType.unspecified}) =>
-      value.name;
+  Object serialize(
+    Serializers serializers,
+    Direction value, {
+    FullType specifiedType = FullType.unspecified,
+  }) => value.name;
 
   @override
-  Direction deserialize(Serializers serializers, Object serialized,
-          {FullType specifiedType = FullType.unspecified}) =>
-      Direction.values.byName(serialized as String);
+  Direction deserialize(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+  }) => Direction.values.byName(serialized as String);
 }
 
 @SerializersFor([Location, CrosswordWord, CrosswordCharacter, Crossword])
